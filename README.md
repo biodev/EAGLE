@@ -1,5 +1,5 @@
 # EAGLE
-Repository in Support of EAGLE Submission
+Campanella G, Kumar N, Nanda S, Singi S, Fluder E, Kwan R, Muehlstedt S, Pfarr N, Schüffler PJ, Häggström I, Neittaanmäki N, Akyürek LM, Basnet A, Jamaspishvili T, Nasr MR, Croken MM, Hirsch FR, Elkrief A, Yu H, Ardon O, Goldgof GM, Hameed M, Houldsworth J, Arcila M, Fuchs TJ, Vanderbilt C. Real-world deployment of a fine-tuned pathology foundation model for lung cancer biomarker detection. Nat Med. 2025 Sep;31(9):3002-3010. doi: 10.1038/s41591-025-03780-x. Epub 2025 Jul 9. PMID: 40634781; PMCID: PMC12443599.
 
 ## Setting Up the Environment
 
