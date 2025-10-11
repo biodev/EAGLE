@@ -149,33 +149,31 @@ The quick inference workflow performs the following:
 3. Aggregates features using the slide-level MIL attention model
 4. Produces slide-level predictions saved to a `.csv` file
 
-## 2. Directory Structure
+## 2. Files
 
 ```
 quick_inference/
-├── run_gigapath_full.py
-├── run_gigapath.sh
-├── checkpoints/
-├── example_slides/
-└── outputs/
+├── run_eagle_full.py        # Standalone inference pipeline (dir of .svs → CSV)
+├── run_eagle_full.sh        # Bash wrapper
+├── checkpoints/             # Place weights here (see below)
+└── outputs/                 # Thumbnails + results CSV
 ```
 
-## 3. Environment Setup
+## 3. Environment
 
 ```bash
 conda activate irt_env
 pip install -r ../requirements.txt
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0   # optional
 ```
 
-## 4. Downloading EAGLE Weights
+## 4. Download EAGLE Weights
 
-Download weights from Hugging Face:  
-👉 https://huggingface.co/MCCPBR/EAGLE/tree/main
+Weights are hosted at: https://huggingface.co/MCCPBR/EAGLE/tree/main
 
 ```bash
-mkdir -p checkpoints
-cd checkpoints
+mkdir -p quick_inference/checkpoints
+cd quick_inference/checkpoints
 wget https://huggingface.co/MCCPBR/EAGLE/resolve/main/gigapath_ft_checkpoint_tile_020.pth
 wget https://huggingface.co/MCCPBR/EAGLE/resolve/main/gigapath_ft_checkpoint_slide_020.pth
 ```
@@ -188,47 +186,90 @@ huggingface-cli download MCCPBR/EAGLE gigapath_ft_checkpoint_tile_020.pth --loca
 huggingface-cli download MCCPBR/EAGLE gigapath_ft_checkpoint_slide_020.pth --local-dir checkpoints
 ```
 
-Expected layout:
-```
-quick_inference/checkpoints/gigapath_ft_checkpoint_tile_020.pth
-quick_inference/checkpoints/gigapath_ft_checkpoint_slide_020.pth
-```
-
 ## 5. Configure Paths
 
-Edit `run_gigapath.sh`:
+Edit `quick_inference/run_eagle_full.sh`:
+
 ```bash
 PYTHON_BIN="~/anaconda3/envs/EAGLE/bin/python"
-SCRIPT_PATH="~/EAGLE/quick_inference/run_gigapath_full.py"
+SCRIPT_PATH="~/EAGLE/quick_inference/run_eagle_full.py"
 SLIDES_DIR="/path/to/slides"
 TILE_CKPT="~/EAGLE/quick_inference/checkpoints/gigapath_ft_checkpoint_tile_020.pth"
 SLIDE_CKPT="~/EAGLE/quick_inference/checkpoints/gigapath_ft_checkpoint_slide_020.pth"
-OUTDIR="/path/to/output"
+OUTDIR="~/EAGLE/quick_inference/outputs"
 OUTNAME="results.csv"
 ```
 
-## 6. Run Inference
+## 6. Run
 
 ```bash
 cd quick_inference
-bash run_gigapath.sh
+bash run_eagle_full.sh
 ```
 
-Optional arguments:
+Pass-through arguments to the Python script are supported, e.g.:
+
 ```bash
-bash run_gigapath.sh --batch_size 32 --num_workers 8 --save_features
+bash run_eagle_full.sh --batch_size 32 --workers 8 --recursive
 ```
 
-## 7. Example Output
+## 7. Adaptive Runtime (GPU/CPU) — How It Works
 
-```csv
-slide_id,predicted_score
-slide_001.svs,0.9821
-slide_002.svs,0.0332
-slide_003.svs,0.7564
+`run_eagle_full.py` automatically selects the best device and remains robust under tight memory:
+
+- **GPU selection by free VRAM**  
+  At runtime, the script queries each visible CUDA device and picks the GPU with the **most free memory**.  
+  The minimum required free memory is configurable with `--gpu_min_free_gb` (default `2.0`).  
+  - If the best GPU has ≥ `gpu_min_free_gb`, it’s used.  
+  - If **no GPU** meets the threshold, it still uses the **best available GPU** unless a strict mode is enforced (not default).  
+  - If **no CUDA** is available at all, it **falls back to CPU** automatically.
+
+- **CUDA OOM auto-retry on CPU**  
+  If a **CUDA out-of-memory** error happens mid-slide, the script **retries that slide on CPU** with conservative settings (batch size 1, workers 0).  
+  This is **not recommended** for performance, but ensures the pipeline completes and produces a score.
+
+- **Conservative CUDA + cuCIM settings**  
+  The script configures `PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:64` and disables cuCIM caches to reduce allocator pressure.
+
+- **Pinned memory / workers**  
+  DataLoader uses `pin_memory=True`, `persistent_workers=True` when on GPU, and you can set `--workers` (default 0; if GPU is used and workers=0, it promotes to 2).
+
+- **Flags you may care about**  
+  - `--gpu_min_free_gb FLOAT` (default 2.0) – lower if your GPU is small, raise if you want to be stricter.  
+  - `--batch_size INT` – tile embedding batch size.  
+  - `--workers INT` – dataloader workers.
+
+**TL;DR**: it prefers the roomiest GPU; if CUDA isn’t present or memory is too tight, it gracefully runs on CPU so the job still finishes.
+
+## 8. Other Behavior & Outputs
+
+- **Slide discovery**: by default it scans `slides_dir` for `*.svs`; add `--recursive` to search subfolders.  
+- **Thumbnails & tile-grid overlays**: a clean thumbnail and a red-box tile grid are saved under `outputs/thumbnails/`.  
+- **CSV schema** (append-only, resumes automatically if already present):
+  - `slide, slide_path, target, score, inference_time, n_tiles, level, thumbnail_path, thumbnail_clean_path`
+- **Skip logic**: if a slide already has a valid row (`score` present and `n_tiles>0`), it is skipped on subsequent runs.
+- **Hugging Face tokens**: if the backbone is gated, pass `--hf_token` or export `HF_TOKEN`/`HUGGING_FACE_HUB_TOKEN`.
+
+## 9. Example Commands
+
+Local run:
+```bash
+bash quick_inference/run_eagle_full.sh
 ```
 
-## 8. HPC (Slurm) Execution
+Force small GPU threshold and more workers:
+```bash
+bash quick_inference/run_eagle_full.sh --gpu_min_free_gb 1.0 --batch_size 32 --workers 8
+```
+
+Recursive search:
+```bash
+bash quick_inference/run_eagle_full.sh --recursive
+```
+
+## 10. HPC (Slurm)
+
+Create `run_inference.slurm`:
 
 ```bash
 #!/usr/bin/env bash
@@ -239,9 +280,12 @@ slide_003.svs,0.7564
 #SBATCH --time=4:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
+
 module load anaconda
 source activate irt_env
-bash run_gigapath.sh --batch_size 32 --num_workers 8
+
+cd $SLURM_SUBMIT_DIR/quick_inference
+bash run_eagle_full.sh --batch_size 32 --workers 8
 ```
 
 Submit:
@@ -249,15 +293,15 @@ Submit:
 sbatch run_inference.slurm
 ```
 
-## 9. Notes
+## 11. Notes
 
-- Use **absolute paths** on HPC.  
-- Log output:
+- Prefer **absolute paths** on HPC.  
+- Log stdout/stderr:
   ```bash
-  bash run_gigapath.sh > logs/inference_$(date +%Y%m%d_%H%M%S).log 2>&1
+  bash run_eagle_full.sh > logs/inference_$(date +%Y%m%d_%H%M%S).log 2>&1
   ```
-- Recommended GPU: ≥24 GB (A100/H100).  
-- Record Hugging Face commit hash for reproducibility.
+- Recommended GPU: ≥24 GB VRAM (A100/H100).  
+- Record the Hugging Face commit hash of weights for reproducibility.
 
 **References**  
 Campanella et al., *Fine-Tuning Pathology Foundation Models for EGFR Prediction in Lung Adenocarcinoma*, 2024.  
