@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Standalone inference pipeline for GigaPath slides.
+Standalone inference pipeline for eagle slides.
 
 Key differences vs. run_gigapath_file_path_memory_optimized:
   * Accepts a directory of .svs files instead of a manifest CSV.
@@ -178,7 +178,7 @@ def load_tile_model():
         msg = str(exc).lower()
         if "unauthorized" in msg or "gated" in msg or "401" in msg:
             raise RuntimeError(
-                "Failed to download the GigaPath backbone from Hugging Face. "
+                "Failed to download the eagle backbone from Hugging Face. "
                 "Pass --hf_token or set HF_TOKEN / HUGGING_FACE_HUB_TOKEN before running."
             ) from exc
         raise
