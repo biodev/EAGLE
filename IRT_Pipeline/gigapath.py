@@ -11,12 +11,13 @@ print(f'timm version: {timm.__version__}, huggingface_hub version: {huggingface_
 
 from huggingface_hub import hf_hub_download
 
+# DWB: Tokens shouldn't be hard-coded, reverting to retrieving from environment
 # Replace 'your-token' with your actual Hugging Face token
-token = "your_token"
+#token = "your_token"
 
 # model_path = hf_hub_download(repo_id="prov-gigapath/prov-gigapath", filename="model.safetensors", use_auth_token=token)
 
-os.environ['HF_TOKEN'] = 'your_token'
+#os.environ['HF_TOKEN'] = 'your_token'
 #%%
 # Load the model
 def get_model():

@@ -22,7 +22,10 @@ from functools import partial
 import torch
 import torch.nn as nn
 
-from norm_cdf import trunc_normal_
+# Suggestion from Claude Opus 4.7 as the below fails with Module Not Found error
+
+#from norm_cdf import trunc_normal_
+from torch.nn.init import trunc_normal_
 
 
 import torch.nn.functional as F
